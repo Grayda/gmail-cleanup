@@ -1,0 +1,20 @@
+[
+    {
+        "labels": ["My Label/Sub Label"],
+        "older_than": "14d",
+        "actions": {
+            "archive": true,
+            "mark_as_read": true,
+            "trash": false
+        }
+    },
+    {
+        "labels": ["Label B/Label B1", "Label B/Label B2"],
+        "older_than": "14d",
+        "actions": {
+            "archive": true,
+            "mark_as_read": true,
+            "trash": false
+        }
+    }
+]

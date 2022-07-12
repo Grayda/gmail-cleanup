@@ -8,9 +8,14 @@ A [Google Cloud Platform project](https://developers.google.com/workspace/guides
 ## Installation
  1. Install the requirements using `pip -r requirements.txt`
  2. Create the cloud platform project and download the credentials file. Call it `credentials.json` and place it in the same folder as `cleanup.py`
- 3. Edit `labels.json` (see below for the format required)
+ 3. Rename `labels.example.json` to `labels.json` and edit it as per the format below.
  4. Run `python cleanup.py`
  5. Check your inbox to make sure the changes were applied.
+
+## Command line options
+There's a few command line options you can use.
+
+`--dry` does a dry run. It won't modify your emails, but will show you a small preview of the emails it finds. 
 
 ## labels.json
 
@@ -19,7 +24,7 @@ A [Google Cloud Platform project](https://developers.google.com/workspace/guides
 ```json
 [
     {
-        "label": "My/Nested/Label",
+        "labels": ["My/Nested/Label", "Some Other/Nested/Label"],
         "older_than": "14d",
         "actions": {
             "archive": true,
@@ -28,7 +33,7 @@ A [Google Cloud Platform project](https://developers.google.com/workspace/guides
         }
     },
     {
-        "label": "Label Name",
+        "labels": ["Label Name"],
         "older_than": "1y",
         "actions": {
             "archive": false,
@@ -39,7 +44,7 @@ A [Google Cloud Platform project](https://developers.google.com/workspace/guides
 ]
 ```
 
-`label` is the name of the label and can be either lowercase / hyphen separated, or as it appears on Gmail. For example either `banking-bills-energy-use` or `Banking/Bills/Energy Use`
+`labels` is a list containing the names of the labels to modify, and can be either lowercase / hyphen separated as it appears in the search box, or separated with slashes. For example either `banking-bills-energy-use` or `Banking/Bills/Energy Use`
 `older_than` specifies how old the email should be before it's acted upon. Valid values are `d`, `m` and `y`. For example `1d` for one day, or `6m` for six months
 `actions` must contain the following booleans:
     `archive`: if `true`, removes the `INBOX` label (meaning it gets archived)
