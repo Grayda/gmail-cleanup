@@ -4,6 +4,8 @@ import os.path
 import json
 import logging
 import sys
+import argparse
+import collections
 
 # For rotating logs
 from logging.handlers import TimedRotatingFileHandler
@@ -23,8 +25,8 @@ logger = None
 # The Gmail API service. We use this to build and execute requests.
 service = None
 
-# Change this when you're sure that everything is running as expected. Maximum is 500
-maxResults = 5
+# Our command line arguments
+config = None
 
 # The OAuth2 scope we want. By default we want full access because we want to delete emails. If you don't want to delete emails, just archive them, you can
 # set the scope to https://www.googleapis.com/auth/gmail.labels which is much safer and only lets you add / remove labels
@@ -43,7 +45,17 @@ def main():
 
     logger = setupLogging()
 
+    getArgs()
+    
     credentials, service = authorizeAPI(scopes)
+
+    if config['labels']:
+        getLabels()
+        return
+
+    # Limit to 5 if doing a dry run, because if you're going for 500 emails (the maximum), that's a hell of a lot of API calls.
+    if not config['production']:
+        config['maxresults'] = 5
 
     # Load the JSON file with labels and relative dates i nit
     json = loadJSON("labels.json")
@@ -51,6 +63,19 @@ def main():
     # Pass that data to the cleanupInbox function
     cleanupInbox(json)
 
+def getArgs():
+    """Gets arguments and set up command line stuff.
+    We use this to set production mode, get labels etc.
+    """
+    global config 
+ 
+    parser = argparse.ArgumentParser(description="Script that archives or trashes emails in Gmail based on time rules",
+                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("-p", "--production", action="store_true", help="production mode (actually changes data)")
+    parser.add_argument("-l", "--labels", action="store_true", help="displays all labels")
+    parser.add_argument("-m", "--maxresults", type=int, default=5)
+    args = parser.parse_args()
+    config = vars(args) 
 
 def setupLogging():
 
@@ -101,6 +126,16 @@ def authorizeAPI(scopes):
 
     return creds, service
 
+def getLabels():
+    labels = service.users().labels().list(userId='me').execute().get('labels')
+
+    if not labels:
+        print('No labels found')
+
+    labels = sorted((l['name'] for l in labels))
+
+    for label in labels:
+        print(label)
 
 def cleanupInbox(json):
     """Takes a JSON file that contains an array of objects with three properties: `name`, `date` and `action`. It then retrieves your Gmail labels,
@@ -112,23 +147,28 @@ def cleanupInbox(json):
         findEmails(label)
 
 
-def findEmails(label):
+def findEmails(labels):
     """Searches for emails that match the given label and age. 
     When the email is found, pass it to 
     """
 
-    global maxResults
+    if type(labels['labels']) is list:
+        formattedLabels = " OR ".join(f'label:"{l}"' for l in labels['labels'])
+    else:
+        formattedLabels = 'label:"{l}"'.format(l=labels['labels'])
 
     try:
-        # Call the Gmail API
-        messages = service.users().messages().list(userId='me', q="in:inbox label:\"{label}\" older_than:{older_than}".format(
-            label=label['label'], older_than=label['older_than']), maxResults=maxResults).execute().get('messages', [])
+        logger.info("Retrieving emails with these labels: {labels}".format(labels=labels['labels']))
+        # Call the Gmail API to get all messages that are in the inbox and have the specified label, and are older than the specified date
+        messages = service.users().messages().list(userId='me', q="in:inbox {labels} older_than:{older_than}".format(labels=formattedLabels, older_than=labels['older_than']), maxResults=config['maxresults']).execute().get('messages', [])
 
+        # If there are no messages, warn, and return
         if not messages:
-            logger.warning('No messages found.')
+            logger.warning('No messages found for labels: {labels}'.format(labels=labels['labels']))
             return
 
-        handleEmails([m['id'] for m in messages], label)
+        # Otherwise, pluck all the IDs from the response and pass them to the handleEmails function
+        handleEmails([m['id'] for m in messages], labels)
 
     except HttpError as error:
         # TODO(developer) - Handle errors from gmail API.
@@ -140,6 +180,7 @@ def findEmails(label):
 def handleEmails(messages, label):
 
     global service
+    global config
 
     addLabels = []
     removeLabels = []
@@ -154,17 +195,27 @@ def handleEmails(messages, label):
     if addLabels or removeLabels:
         body = {'ids': messages, 'removeLabelIds': removeLabels,
                 'addLabelIds': addLabels}
-        result = service.users().messages().batchModify(userId='me', body=body).execute()
+        if config['production']:
+            result = service.users().messages().batchModify(userId='me', body=body).execute()
+        else:
+            logger.warning("Skipping modification step due to production flag not being set")
+            for message in messages:
+                details = getEmailDetails(message)
+                logger.info("Preview of {id}: {snippet}".format(id=message, snippet=details['snippet']))
+        
         logger.info("Modified {num} emails with IDs of {ids} by adding these labels: {added} and removing these labels: {removed}".format(
             num=len(messages), ids=messages, added=addLabels, removed=removeLabels))
 
     return
 
+def getEmailDetails(mail):
+    return service.users().messages().get(userId='me', id=mail).execute()    
 
 def loadJSON(filename):
-    jsonFile = open(filename)
-    return json.load(jsonFile)
-
+    if os.path.exists(filename):
+        return json.load(open(filename))
+    else:
+        logger.error("Unable to find {filename}!".format(filename=filename))
 
 if __name__ == '__main__':
     main()
