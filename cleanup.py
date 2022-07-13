@@ -40,11 +40,12 @@ def main():
     global service
     global logger
 
-    # Set up logging. This handles logging to stdout and also to a rotating log ile. 
-    logger = setupLogging()
 
     # Gets our command line arguments. 
     getArgs()
+    
+    # Set up logging. This handles logging to stdout and also to a rotating log ile. 
+    logger = setupLogging()
     
     # Loads token.json if present, otherwise prompts the user to complete the OAuth flow.
     credentials, service = authorizeAPI(config['scope'])
@@ -85,7 +86,13 @@ def getArgs():
     parser.add_argument("-m", "--maxresults", help="maximum number of emails to process in one go. Maximum is 500", type=int, default=500)
     parser.add_argument("-p", "--production", action="store_true", help="production mode (actually changes data)")
     parser.add_argument("-s", "--scope", action='append', help="the gmail API scopes to use. Use multiple times to specify multiple scopes")
-    parser.add_argument("-sch", "--schema", type=str, help="The schema file to validate against", default="labels.json.schema")    
+    parser.add_argument("--schema", type=str, help="The schema file to validate against", default="labels.json.schema")    
+    
+    # Logging options 
+    parser.add_argument("--log-level", type=str.upper, help="logging level. Messages lower than this aren't logged", choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='INFO')
+    parser.add_argument("--log-file", type=str, help="log file", default='results.log')
+    parser.add_argument("--log-interval", type=int, help="how many days to log before rotating the file", default=30)
+    parser.add_argument("--log-backup-count", type=int, help="how many log files to keep before overwriting the oldest", default=6)
 
     args = parser.parse_args()
     config = vars(args) 
@@ -107,11 +114,9 @@ def setupLogging():
 
     logger = logging.getLogger("Rotating Log")
     
-    # TODO: Make this changeable so you don't get info logs and such clogging up your system in production. 
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(config['log_level'].upper())
 
-    # TODO: Change this so the user can set the log filename and rotation options as they see fit
-    fileHandler = TimedRotatingFileHandler("results.log", when="d", interval=30, backupCount=6)
+    fileHandler = TimedRotatingFileHandler(config['log_file'], when="d", interval=config['log_days'], backupCount=config['log_backup_count'])
 
     # Create a handler to log to stdout
     streamHandler = logging.StreamHandler(sys.stdout)
@@ -307,7 +312,6 @@ def loadJSON(filename, schema):
         jsonFile = json.load(open(filename))
 
         try:
-            print("Validating")
             validate(jsonFile, schemaFile)
         except ValidationError as error:
             logger.error(f"Schema validation failed! {error.message}")

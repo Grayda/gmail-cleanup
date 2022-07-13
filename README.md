@@ -31,6 +31,16 @@ There's a few command line options you can use.
 
 `--scope` sets the Gmail scope(s) you want to use. Defaults to `https://www.googleapis.com/auth/gmail.modify`. Use it multiple times to specify multiple scopes. For example `--scope=A --scope=B --scope=C`
 
+`--schema` is the schema file to validate `labels.json` against. Defaults to `labels.json.schema`
+
+`--log-level` is the minimum logging level. Choices are `DEBUG`, `INFO`, `WARNING`, `ERROR` and `CRITICAL`. Defaults to `INFO`
+
+`--log-file` is the file to log to. Defaults to `results.log`
+
+`--log-interval` determines how long to log for before rotating the log file. Defaults to `30` days
+
+`--log-backup-count` determines how many log files to keep before overwriting the oldest one. Defaults to `6` (so you get 6*30 = 180 days before the oldest log gets overwritten)
+
 ## labels.json
 
 `labels.json` should contain a list of Gmail labels, and an action to take. For example:
