@@ -8,12 +8,16 @@ A [Google Cloud Platform project](https://developers.google.com/workspace/guides
 ## Installation
  1. Install the requirements using `pip -r requirements.txt`
  2. Create the cloud platform project and download the credentials file. Call it `credentials.json` and place it in the same folder as `cleanup.py`
- 3. Rename `labels.example.json` to `labels.json` and edit it as per the format below.
- 4. Run `python cleanup.py`
- 5. Check your inbox to make sure the changes were applied.
+ 3. Run `python cleanup.py --example` to download all your Gmail labels and create a JSON file you can edit (optional)
+ 4. Rename `labels.gmail.json` to `labels.json` and edit it. If you didn't do step 3, then just rename `labels.example.json` and edit that instead.
+ 5. Run `python cleanup.py` to do a dry run and make sure everything works
+ 6. Run `python cleanup.py --production` to do an actual run
+ 7. Check your inbox to make sure the changes were applied.
 
 ## Command line options
 There's a few command line options you can use.
+
+`--help` shows the help, as well as the defaults. 
 
 `--production` if this is NOT set, no emails will be changed, but instead it'll show you a preview of 5 messages for each label that would be changed if `--production` was set
 
@@ -54,10 +58,15 @@ There's a few command line options you can use.
 ]
 ```
 
-`labels` is a list containing the names of the labels to modify, and can be either lowercase / hyphen separated as it appears in the search box, or separated with slashes. For example either `banking-bills-energy-use` or `Banking/Bills/Energy Use`
+`labels` is an array containing the names of the labels to modify. This is useful for grouping multiple labels under one timeframe. 
+
 `older_than` specifies how old the email should be before it's acted upon. Valid values are `d`, `m` and `y`. For example `1d` for one day, or `6m` for six months
+
 `actions` must contain the following booleans:
+
     `archive`: if `true`, removes the `INBOX` label (meaning it gets archived)
+
     `mark_as_read`: if `true`, removes the `UNREAD` label (meaning it gets marked as read)
+
     `trash`: if `true`, adds the `TRASH` label (meaning it gets moved to the bin)
 

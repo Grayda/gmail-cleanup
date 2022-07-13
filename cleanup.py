@@ -10,6 +10,7 @@ import collections
 # For rotating logs
 from logging.handlers import TimedRotatingFileHandler
 
+# For the Gmail API
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -38,29 +39,34 @@ def main():
     global service
     global logger
 
+    # Set up logging. This handles logging to stdout and also to a rotating log ile. 
     logger = setupLogging()
 
+    # Gets our command line arguments. 
     getArgs()
     
+    # Loads token.json if present, otherwise prompts the user to complete the OAuth flow.
     credentials, service = authorizeAPI(config['scope'])
 
+    # If we just want to output the labels, do so and then quit
     if config['labels']:
         for label in getLabels():
             print(label)
         exit()
 
+    # If we want to generate a sample file containing the user's labels, do that and quit
     if config['example']:
         generateLabelsJSON()
         exit()
 
-    # Limit to 5 if doing a dry run, because if you're going for 500 emails (the maximum), that's a hell of a lot of API calls.
+    # Limit to 5 if doing a dry run, because if you're going for 500 emails (the maximum), that's a hell of a lot of API calls and would take forever
     if not config['production']:
         config['maxresults'] = 5
 
-    # Load the JSON file with labels and relative dates i nit
-    json = loadJSON("labels.json")
+    # Load the JSON file with labels and relative dates in it
+    json = loadJSON(config["json"])
 
-    # Pass that data to the cleanupInbox function
+    # Pass the JSON data to the cleanupInbox function
     cleanupInbox(json)
 
 def getArgs():
@@ -71,39 +77,51 @@ def getArgs():
  
     parser = argparse.ArgumentParser(description="Script that archives or trashes emails in Gmail based on time rules",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("-c", "--creds", type=str, help="the credentials file to use", default="credentials.json")
     parser.add_argument("-e", "--example", action="store_true", help="gets all your labels and makes a JSON file")
-    parser.add_argument("-p", "--production", action="store_true", help="production mode (actually changes data)")
+    parser.add_argument("-j", "--json", type=str, help="the JSON file to load", default="labels.json")
     parser.add_argument("-l", "--labels", action="store_true", help="displays all labels")
     parser.add_argument("-m", "--maxresults", help="maximum number of emails to process in one go. Maximum is 500", type=int, default=500)
+    parser.add_argument("-p", "--production", action="store_true", help="production mode (actually changes data)")
     parser.add_argument("-s", "--scope", action='append', help="the gmail API scopes to use. Use multiple times to specify multiple scopes")
-    parser.add_argument("-c", "--creds", action='append', help="the credentials file to use", default="credentials.json")
 
     args = parser.parse_args()
     config = vars(args) 
 
+    # If you set a default value for the "append" action in argparse, the default value is always there.
+    # We don't want that because if you're calling `--scope`, you want to override the default.
     if not config['scope']:
         config['scope'] = ["https://www.googleapis.com/auth/gmail.modify"]
 
+    # Sanity check for the maxresults flag
     if config['maxresults'] > 500 or config['maxresults'] <= 0:
         print("Max results flag needs to be between 1 and 500 due to Gmail API limitations")
         exit()
 
 def setupLogging():
+    """Sets up logging using a rotating log.
+    Also logs to the screen if running interactively.
+    """
 
     logger = logging.getLogger("Rotating Log")
+    
+    # TODO: Make this changeable so you don't get info logs and such clogging up your system in production. 
     logger.setLevel(logging.DEBUG)
 
+    # TODO: Change this so the user can set the log filename and rotation options as they see fit
     fileHandler = TimedRotatingFileHandler("results.log", when="d", interval=30, backupCount=6)
+
+    # Create a handler to log to stdout
     streamHandler = logging.StreamHandler(sys.stdout)
 
+    # Add the date, time and level to the messages being logged
     format = logging.Formatter(fmt="%(asctime)s - %(levelname)s: %(message)s")
 
+    # Set the formatters for both log types, and add the handlers to the logger
     fileHandler.setFormatter(format)
     streamHandler.setFormatter(format)
-    
     logger.addHandler(fileHandler)
     logger.addHandler(streamHandler)
-
 
     return logger
 
@@ -140,10 +158,18 @@ def authorizeAPI(scopes):
     return creds, service
 
 def generateLabelsJSON(filename="labels.gmail.json"):
+    """Downloads the user's labels from Gmail and makes a JSON file they can edit.
+    Defaults to archiving messages older than 99 years, so no harm is done if the values aren't changed
+    """
+    
+    # Retrieve the labels from Gmail
     labels = getLabels()
+
+    logger.info("Downloaded {num} labels from Gmail".format(num=len(labels)))
 
     jsonFile = []
 
+    # Change this to change the defaults used in the example JSON
     template = {
         "labels": [],
         "older_than": "99y",
@@ -155,33 +181,40 @@ def generateLabelsJSON(filename="labels.gmail.json"):
     }
 
     for label in labels:
+        # Make a copy of the template, otherwise all the labels in the JSON file will be exactly the same
         toAdd = template.copy()
         toAdd['labels'] = [label]
         jsonFile.append(toAdd)
 
+    # Save the file and indent it for niceness
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(jsonFile, f, ensure_ascii=False, indent=4)
+
+    logger.info("{filename} saved successfully".format(filename=filename))
 
     return
 
 def getLabels():
+    """Downloads the user's labels from Gmail.
+    This only returns user labels, not system labels. 
+    """
     labels = service.users().labels().list(userId='me').execute().get('labels')
 
     if not labels:
-        print('No labels found')
+        logger.warn('No labels found')
 
     labels = sorted((l['name'] for l in labels if l['type'] == 'user'))
 
     return labels
 
 def cleanupInbox(json):
-    """Takes a JSON file that contains an array of objects with three properties: `name`, `date` and `action`. It then retrieves your Gmail labels,
-    then loops through the JSON. If the label in your JSON is a label in Gmail, it loads the first 500 messages with that label and compares dates.
-    If the date the mail was sent is OLDER than the relative time specified in the `date` property in the JSON, it performs the action in the JSON,
-    which can be `archive` or `delete`    
+    """Takes a JSON file that contains an array of objects with three properties: `labels`, `older_than` and `actions`. It then searches
+    Gmail for the specified labels, then performs the necessary action on them. 
     """
+    
     for label in json:
-        findEmails(label)
+        messages = findEmails(label)
+        handleEmails(messages, label)
 
 
 def findEmails(labels):
@@ -204,8 +237,8 @@ def findEmails(labels):
             logger.warning('No messages found for labels: {labels}'.format(labels=labels['labels']))
             return
 
-        # Otherwise, pluck all the IDs from the response and pass them to the handleEmails function
-        handleEmails([m['id'] for m in messages], labels)
+        # Go through and pluck all the IDs from the messages, then return those
+        return [m['id'] for m in messages]
 
     except HttpError as error:
         # TODO(developer) - Handle errors from gmail API.
@@ -215,10 +248,13 @@ def findEmails(labels):
 
 
 def handleEmails(messages, label):
+    """Takes a list of message IDs and updates the labels on them. 
+    """
 
     global service
     global config
 
+    # The labels we're going to add and remove from the specified messages
     addLabels = []
     removeLabels = []
 
@@ -229,14 +265,19 @@ def handleEmails(messages, label):
     if label['actions']['trash'] == True:
         addLabels.append('TRASH')
 
+    # Only take action if we've got labels to add or remove
     if addLabels or removeLabels:
         body = {'ids': messages, 'removeLabelIds': removeLabels,
                 'addLabelIds': addLabels}
+        
+        # Only take action if we're in production
         if config['production']:
             result = service.users().messages().batchModify(userId='me', body=body).execute()
         else:
             logger.warning("Skipping modification step due to production flag not being set")
             for message in messages:
+                # Retrieve details about the messages from Gmail and show a snippet.
+                # This helps you work out if you've typed the labels correctly.
                 details = getEmailDetails(message)
                 logger.info("Preview of {id}: {snippet}".format(id=message, snippet=details['snippet']))
         
@@ -246,9 +287,15 @@ def handleEmails(messages, label):
     return
 
 def getEmailDetails(mail):
+    """Loads information about a specific email from Gmail
+    """
+    
     return service.users().messages().get(userId='me', id=mail).execute()    
 
 def loadJSON(filename):
+    """Loads a JSON file if it exists"""
+    
+    # TODO: Specify an (optional?) schema for verification purposes
     if os.path.exists(filename):
         return json.load(open(filename))
     else:
