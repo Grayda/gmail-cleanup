@@ -1,0 +1,39 @@
+{
+    "type" : "array",
+    "items" : {
+        "additionalProperties": false,
+        "required": ["labels", "actions", "older_than"],
+        "properties": {
+            "labels": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                }
+            },
+            "older_than": {
+                "type": "string",
+                "pattern": "^\\d+[dmy]$"
+            },
+            "actions": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "archive": {
+                        "type": "boolean"
+                    },
+                    "mark_as_read": {
+                        "type": "boolean"
+                    },
+                    "trash": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "archive",
+                    "mark_as_read",
+                    "trash"
+                ]
+            }
+        }
+    }
+}

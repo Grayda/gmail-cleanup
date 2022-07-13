@@ -5,7 +5,8 @@ import json
 import logging
 import sys
 import argparse
-import collections
+from jsonschema import validate
+from jsonschema.exceptions import ValidationError
 
 # For rotating logs
 from logging.handlers import TimedRotatingFileHandler
@@ -64,7 +65,7 @@ def main():
         config['maxresults'] = 5
 
     # Load the JSON file with labels and relative dates in it
-    json = loadJSON(config["json"])
+    json = loadJSON(config["json"], config['schema'])
 
     # Pass the JSON data to the cleanupInbox function
     cleanupInbox(json)
@@ -84,6 +85,7 @@ def getArgs():
     parser.add_argument("-m", "--maxresults", help="maximum number of emails to process in one go. Maximum is 500", type=int, default=500)
     parser.add_argument("-p", "--production", action="store_true", help="production mode (actually changes data)")
     parser.add_argument("-s", "--scope", action='append', help="the gmail API scopes to use. Use multiple times to specify multiple scopes")
+    parser.add_argument("-sch", "--schema", type=str, help="The schema file to validate against", default="labels.json.schema")    
 
     args = parser.parse_args()
     config = vars(args) 
@@ -214,6 +216,8 @@ def cleanupInbox(json):
     
     for label in json:
         messages = findEmails(label)
+        if not messages:
+            continue
         handleEmails(messages, label)
 
 
@@ -292,14 +296,27 @@ def getEmailDetails(mail):
     
     return service.users().messages().get(userId='me', id=mail).execute()    
 
-def loadJSON(filename):
+def loadJSON(filename, schema):
     """Loads a JSON file if it exists"""
     
+    if os.path.exists(schema):
+        schemaFile = json.load(open(schema))
+
     # TODO: Specify an (optional?) schema for verification purposes
     if os.path.exists(filename):
-        return json.load(open(filename))
+        jsonFile = json.load(open(filename))
+
+        try:
+            print("Validating")
+            validate(jsonFile, schemaFile)
+        except ValidationError as error:
+            logger.error(f"Schema validation failed! {error.message}")
+            exit()
+
+        return jsonFile 
     else:
         logger.error("Unable to find {filename}!".format(filename=filename))
+        exit()
 
 if __name__ == '__main__':
     main()
