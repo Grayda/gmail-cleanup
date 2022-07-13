@@ -28,11 +28,6 @@ service = None
 # Our command line arguments
 config = None
 
-# The OAuth2 scope we want. By default we want full access because we want to delete emails. If you don't want to delete emails, just archive them, you can
-# set the scope to https://www.googleapis.com/auth/gmail.labels which is much safer and only lets you add / remove labels
-scopes = ['https://www.googleapis.com/auth/gmail.modify']
-
-
 def main():
     """Looks through a JSON file that contains label names and durations.
     Then goes through each of those labels and gets all the emails, If the email is older than the duration,
@@ -47,11 +42,16 @@ def main():
 
     getArgs()
     
-    credentials, service = authorizeAPI(scopes)
+    credentials, service = authorizeAPI(config['scope'])
 
     if config['labels']:
-        getLabels()
-        return
+        for label in getLabels():
+            print(label)
+        exit()
+
+    if config['example']:
+        generateLabelsJSON()
+        exit()
 
     # Limit to 5 if doing a dry run, because if you're going for 500 emails (the maximum), that's a hell of a lot of API calls.
     if not config['production']:
@@ -71,11 +71,22 @@ def getArgs():
  
     parser = argparse.ArgumentParser(description="Script that archives or trashes emails in Gmail based on time rules",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("-e", "--example", action="store_true", help="gets all your labels and makes a JSON file")
     parser.add_argument("-p", "--production", action="store_true", help="production mode (actually changes data)")
     parser.add_argument("-l", "--labels", action="store_true", help="displays all labels")
-    parser.add_argument("-m", "--maxresults", type=int, default=5)
+    parser.add_argument("-m", "--maxresults", help="maximum number of emails to process in one go. Maximum is 500", type=int, default=500)
+    parser.add_argument("-s", "--scope", action='append', help="the gmail API scopes to use. Use multiple times to specify multiple scopes")
+    parser.add_argument("-c", "--creds", action='append', help="the credentials file to use", default="credentials.json")
+
     args = parser.parse_args()
     config = vars(args) 
+
+    if not config['scope']:
+        config['scope'] = ["https://www.googleapis.com/auth/gmail.modify"]
+
+    if config['maxresults'] > 500 or config['maxresults'] <= 0:
+        print("Max results flag needs to be between 1 and 500 due to Gmail API limitations")
+        exit()
 
 def setupLogging():
 
@@ -103,6 +114,8 @@ def authorizeAPI(scopes):
     This function also returns a built service, so you can start making API calls right away. 
     """
 
+    global config
+
     creds = None
 
     # The file token.json stores the user's access and refresh tokens, and is
@@ -116,7 +129,7 @@ def authorizeAPI(scopes):
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', scopes)
+                config['creds'], scopes)
             creds = flow.run_local_server(port=0)
         # Save the credentials for the next run
         with open('token.json', 'w') as token:
@@ -126,16 +139,40 @@ def authorizeAPI(scopes):
 
     return creds, service
 
+def generateLabelsJSON(filename="labels.gmail.json"):
+    labels = getLabels()
+
+    jsonFile = []
+
+    template = {
+        "labels": [],
+        "older_than": "99y",
+        "actions": {
+            "archive": True,
+            "mark_as_read": True,
+            "trash": False
+        }
+    }
+
+    for label in labels:
+        toAdd = template.copy()
+        toAdd['labels'] = [label]
+        jsonFile.append(toAdd)
+
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(jsonFile, f, ensure_ascii=False, indent=4)
+
+    return
+
 def getLabels():
     labels = service.users().labels().list(userId='me').execute().get('labels')
 
     if not labels:
         print('No labels found')
 
-    labels = sorted((l['name'] for l in labels))
+    labels = sorted((l['name'] for l in labels if l['type'] == 'user'))
 
-    for label in labels:
-        print(label)
+    return labels
 
 def cleanupInbox(json):
     """Takes a JSON file that contains an array of objects with three properties: `name`, `date` and `action`. It then retrieves your Gmail labels,
