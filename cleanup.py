@@ -116,7 +116,7 @@ def setupLogging():
     
     logger.setLevel(config['log_level'].upper())
 
-    fileHandler = TimedRotatingFileHandler(config['log_file'], when="d", interval=config['log_days'], backupCount=config['log_backup_count'])
+    fileHandler = TimedRotatingFileHandler(config['log_file'], when="d", interval=config['log_interval'], backupCount=config['log_backup_count'])
 
     # Create a handler to log to stdout
     streamHandler = logging.StreamHandler(sys.stdout)
@@ -231,19 +231,38 @@ def findEmails(labels):
     When the email is found, pass it to 
     """
 
-    if type(labels['labels']) is list:
-        formattedLabels = " OR ".join(f'label:"{l}"' for l in labels['labels'])
-    else:
-        formattedLabels = 'label:"{l}"'.format(l=labels['labels'])
 
-    try:
+    # If we have a set of labels, do some formatting first.
+    if 'labels' in labels:
+
+        if type(labels['labels']) is list:
+            formattedLabels = " OR ".join(f'label:"{l}"' for l in labels['labels'])
+        else:
+            formattedLabels = 'label:"{l}"'.format(l=labels['labels'])
+
+        query = "in:inbox {labels} older_than:{older_than}".format(labels=formattedLabels, older_than=labels['older_than'])
         logger.info("Retrieving emails with these labels: {labels}".format(labels=labels['labels']))
+
+    elif 'query' in labels:
+
+        # Join all the querie list items into a string
+        if type(labels['query']) is list:
+            query = " ".join(labels['query'])
+        else:
+            query = labels['query']
+
+        logger.info("Retrieving emails with this query: {query}".format(query=labels['query']))
+    else:
+        logger.error("Information passed has neither a label nor a query. Exiting!")
+        exit(1)
+    try:
+        
         # Call the Gmail API to get all messages that are in the inbox and have the specified label, and are older than the specified date
-        messages = service.users().messages().list(userId='me', q="in:inbox {labels} older_than:{older_than}".format(labels=formattedLabels, older_than=labels['older_than']), maxResults=config['maxresults']).execute().get('messages', [])
+        messages = service.users().messages().list(userId='me', q=query, maxResults=config['maxresults']).execute().get('messages', [])
 
         # If there are no messages, warn, and return
         if not messages:
-            logger.warning('No messages found for labels: {labels}'.format(labels=labels['labels']))
+            logger.warning('No messages found for query: {query}'.format(query=query))
             return
 
         # Go through and pluck all the IDs from the messages, then return those

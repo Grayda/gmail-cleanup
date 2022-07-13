@@ -1,6 +1,6 @@
 [
     {
-        "labels": ["My Label/Sub Label"],
+        "labels": ["My Label/Sub Label 1", "My Label/Sub Label 2"],
         "older_than": "14d",
         "actions": {
             "archive": true,
@@ -9,8 +9,7 @@
         }
     },
     {
-        "labels": ["Label B/Label B1", "Label B/Label B2"],
-        "older_than": "14d",
+        "query": ["has:attachment", "older_than:2y", "larger:10M"],
         "actions": {
             "archive": true,
             "mark_as_read": true,

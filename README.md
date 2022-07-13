@@ -43,7 +43,7 @@ There's a few command line options you can use.
 
 ## labels.json
 
-`labels.json` should contain a list of Gmail labels, and an action to take. For example:
+`labels.json` should contain a list or string of Gmail labels, or a list or string of a Gmail query, and the actions to take. For example:
 
 ```json
 [
@@ -57,8 +57,24 @@ There's a few command line options you can use.
         }
     },
     {
-        "labels": ["Label Name"],
-        "older_than": "1y",
+        "labels": "Some/Label",
+        "older_than": "14d",
+        "actions": {
+            "archive": true,
+            "mark_as_read": true,
+            "trash": false
+        }
+    },
+    {
+        "query": ["has:attachment", "older_than:2y", "larger:10M"],
+        "actions": {
+            "archive": false,
+            "mark_as_read": true,
+            "trash": true
+        }
+    },
+    {
+        "query": "from:user@example.com older_than:6m",
         "actions": {
             "archive": false,
             "mark_as_read": true,
@@ -68,15 +84,22 @@ There's a few command line options you can use.
 ]
 ```
 
-`labels` is an array containing the names of the labels to modify. This is useful for grouping multiple labels under one timeframe. 
+`labels` is an array or string containing the name(s) of the labels to modify. This is useful for grouping multiple labels under one timeframe. 
 
-`older_than` specifies how old the email should be before it's acted upon. Valid values are `d`, `m` and `y`. For example `1d` for one day, or `6m` for six months
+`older_than` specifies how old the email should be before it's acted upon. Valid values are `d`, `m` and `y`. For example `1d` for one day, or `6m` for six months. 
+
+`query` is an array or a string that represents a [Gmail query](https://support.google.com/mail/answer/7190?hl=en). **NOTE: If you use a query, DO NOT include the `older_than` property in your JSON. Instead, add it inline. For example `["from:user@example.com", "older_than:2m"]`. If you have both `query` and `older_than`, you'll get an error!**
 
 `actions` must contain the following booleans:
 
-    `archive`: if `true`, removes the `INBOX` label (meaning it gets archived)
+`archive`: if `true`, removes the `INBOX` label (meaning it gets archived)
 
-    `mark_as_read`: if `true`, removes the `UNREAD` label (meaning it gets marked as read)
+`mark_as_read`: if `true`, removes the `UNREAD` label (meaning it gets marked as read)
 
-    `trash`: if `true`, adds the `TRASH` label (meaning it gets moved to the bin)
+`trash`: if `true`, adds the `TRASH` label (meaning it gets moved to the bin)
 
+## Notes
+
+While this has been tested on my own Gmail inbox, it hasn't been tested thoroughly. There may be bugs, or ways you can archive or delete more than you intended to. Use this script at your own risk!
+
+And when writing Gmail queries, be careful, because no sanity checks are done, meaning that just using a query that is nothing but `older_than:1d` has the potential to trash your entire inbox. You have been warned!
