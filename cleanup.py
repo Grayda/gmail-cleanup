@@ -5,6 +5,11 @@ import json
 import logging
 import sys
 import argparse
+import urllib
+from requests import request
+
+import validators
+
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 
@@ -81,7 +86,7 @@ def getArgs():
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-c", "--creds", type=str, help="the credentials file to use", default="credentials.json")
     parser.add_argument("-e", "--example", action="store_true", help="gets all your labels and makes a JSON file")
-    parser.add_argument("-j", "--json", type=str, help="the JSON file to load", default="labels.json")
+    parser.add_argument("-j", "--json", type=str, help="the JSON file to load. Can be a URL or a local file", default="labels.json")
     parser.add_argument("-l", "--labels", action="store_true", help="displays all labels")
     parser.add_argument("-m", "--maxresults", help="maximum number of emails to process in one go. Maximum is 500", type=int, default=500)
     parser.add_argument("-p", "--production", action="store_true", help="production mode (actually changes data)")
@@ -262,7 +267,7 @@ def findEmails(labels):
 
         # If there are no messages, warn, and return
         if not messages:
-            logger.warning('No messages found for query: {query}'.format(query=query))
+            logger.debug('No messages found for query: {query}'.format(query=query))
             return
 
         # Go through and pluck all the IDs from the messages, then return those
@@ -323,23 +328,35 @@ def getEmailDetails(mail):
 def loadJSON(filename, schema):
     """Loads a JSON file if it exists"""
     
-    if os.path.exists(schema):
+    # If it's a URL, load it as a URL
+    if validators.url(schema):
+        schemaFile = request('GET', schema).json()
+        logger.info("Loading schema from URL")
+    elif os.path.exists(schema):
         schemaFile = json.load(open(schema))
+        logger.info("Loading schema from file")
+    else:
+        logger.error("Unable to find {schema}!".format(schema=schema))
+        exit(1)
 
-    # TODO: Specify an (optional?) schema for verification purposes
-    if os.path.exists(filename):
+    if validators.url(filename):
+        jsonFile = request('GET', filename).json()
+        logger.info("Loading json from URL")
+    elif os.path.exists(filename):
         jsonFile = json.load(open(filename))
-
-        try:
-            validate(jsonFile, schemaFile)
-        except ValidationError as error:
-            logger.error(f"Schema validation failed! {error.message}")
-            exit()
-
-        return jsonFile 
+        logger.info("Loading schema from URL")
     else:
         logger.error("Unable to find {filename}!".format(filename=filename))
-        exit()
+        exit(1)        
+
+    try:
+        validate(jsonFile, schemaFile)
+    except ValidationError as error:
+        logger.error(f"Schema validation failed! {error.message}")
+        exit(1)
+
+    return jsonFile 
+    
 
 if __name__ == '__main__':
     main()
