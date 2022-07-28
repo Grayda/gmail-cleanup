@@ -66,22 +66,47 @@
             },
             "actions": {
                 "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                    "archive": {
-                        "type": "boolean"
-                    },
-                    "mark_as_read": {
-                        "type": "boolean"
-                    },
-                    "trash": {
-                        "type": "boolean"
+                "oneOf": [
+                    {
+                        "additionalProperties": false,
+                        "properties": {
+                            "archive": {
+                                "type": "boolean"
+                            },
+                            "mark_as_read": {
+                                "type": "boolean"
+                            },
+                            "trash": {
+                                "type": "boolean"
+                            }        
+                        },
+                        "required": [
+                            "archive",
+                            "mark_as_read",
+                            "trash"
+                        ]
+                    }, {
+                        "additionalProperties": false,
+                        "properties": {
+                            "add": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "remove": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            }
+        
+                        },
+                        "required": [
+                            "add",
+                            "remove"
+                        ]
                     }
-                },
-                "required": [
-                    "archive",
-                    "mark_as_read",
-                    "trash"
                 ]
             }
         }

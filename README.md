@@ -23,6 +23,8 @@ There's a few command line options you can use.
 
 `--labels` displays all your labels from Gmail.
 
+`--json` specifies the file or URL to load the labels and times from. If passing a URL, it needs to be obtainable with via an unauthenticated GET request
+
 `--example` creates a file called `labels.gmail.json` which has all of your labels in a JSON format. You just need to change `older_than` and the `actions` and rename to `labels.json`
 
 `--maxresults` sets how many emails to modify at one time. Limited to 500 by Gmail. For example `--maxresults=250`
@@ -80,6 +82,16 @@ There's a few command line options you can use.
             "mark_as_read": true,
             "trash": true
         }
+    }, {
+        "query": "label:Sample/Label",
+        "actions": {
+            "add": [
+                "TRASH"
+            ],
+            "remove": [
+                "INBOX"
+            ]
+        }
     }
 ]
 ```
@@ -90,13 +102,23 @@ There's a few command line options you can use.
 
 `query` is an array or a string that represents a [Gmail query](https://support.google.com/mail/answer/7190?hl=en). **NOTE: If you use a query, DO NOT include the `older_than` property in your JSON. Instead, add it inline. For example `["from:user@example.com", "older_than:2m"]`. If you have both `query` and `older_than`, you'll get an error!**
 
-`actions` must contain the following booleans:
+`actions` is a list of actions to take. You can either pass named actions, or a list of labels to add or remove
+
+If you want to use named actions, then:
 
 `archive`: if `true`, removes the `INBOX` label (meaning it gets archived)
 
 `mark_as_read`: if `true`, removes the `UNREAD` label (meaning it gets marked as read)
 
 `trash`: if `true`, adds the `TRASH` label (meaning it gets moved to the bin)
+
+If you want to list the labels, then:
+
+`add`: Must be a list of labels to add.
+
+`remove`: Must be a list of labels to remove
+
+NOTE: If you have named actions, you can't have `add` and `remove`. If you have `add` and `remove`, you can't have named actions. 
 
 ## Notes
 

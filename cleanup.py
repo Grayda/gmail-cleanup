@@ -297,6 +297,10 @@ def handleEmails(messages, label):
         removeLabels.append('INBOX')
     if label['actions']['trash'] == True:
         addLabels.append('TRASH')
+    if 'add' in label['actions']:
+        addLabels.append(label['actions']['add'])
+    if 'remove' in label['actions']:
+        removeLabels.append(label['actions']['remove'])
 
     # Only take action if we've got labels to add or remove
     if addLabels or removeLabels:
