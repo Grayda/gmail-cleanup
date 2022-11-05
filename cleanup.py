@@ -35,6 +35,10 @@ service = None
 # Our command line arguments
 config = None
 
+# How many emails we've processed this time
+total = 0
+
+
 def main():
     """Looks through a JSON file that contains label names and durations.
     Then goes through each of those labels and gets all the emails, If the email is older than the duration,
@@ -45,13 +49,12 @@ def main():
     global service
     global logger
 
-
-    # Gets our command line arguments. 
+    # Gets our command line arguments.
     getArgs()
-    
-    # Set up logging. This handles logging to stdout and also to a rotating log ile. 
+
+    # Set up logging. This handles logging to stdout and also to a rotating log ile.
     logger = setupLogging()
-    
+
     # Loads token.json if present, otherwise prompts the user to complete the OAuth flow.
     credentials, service = authorizeAPI(config['scope'])
 
@@ -76,31 +79,44 @@ def main():
     # Pass the JSON data to the cleanupInbox function
     cleanupInbox(json)
 
+
 def getArgs():
     """Gets arguments and set up command line stuff.
     We use this to set production mode, get labels etc.
     """
-    global config 
- 
+    global config
+
     parser = argparse.ArgumentParser(description="Script that archives or trashes emails in Gmail based on time rules",
-                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("-c", "--creds", type=str, help="the credentials file to use", default="credentials.json")
-    parser.add_argument("-e", "--example", action="store_true", help="gets all your labels and makes a JSON file")
-    parser.add_argument("-j", "--json", type=str, help="the JSON file to load. Can be a URL or a local file", default="labels.json")
-    parser.add_argument("-l", "--labels", action="store_true", help="displays all labels")
-    parser.add_argument("-m", "--maxresults", help="maximum number of emails to process in one go. Maximum is 500", type=int, default=500)
-    parser.add_argument("-p", "--production", action="store_true", help="production mode (actually changes data)")
-    parser.add_argument("-s", "--scope", action='append', help="the gmail API scopes to use. Use multiple times to specify multiple scopes")
-    parser.add_argument("--schema", type=str, help="The schema file to validate against", default="labels.json.schema")    
-    
-    # Logging options 
-    parser.add_argument("--log-level", type=str.upper, help="logging level. Messages lower than this aren't logged", choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='INFO')
-    parser.add_argument("--log-file", type=str, help="log file", default='results.log')
-    parser.add_argument("--log-interval", type=int, help="how many days to log before rotating the file", default=30)
-    parser.add_argument("--log-backup-count", type=int, help="how many log files to keep before overwriting the oldest", default=6)
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("-c", "--creds", type=str,
+                        help="the credentials file to use", default="credentials.json")
+    parser.add_argument("-e", "--example", action="store_true",
+                        help="gets all your labels and makes a JSON file")
+    parser.add_argument("-j", "--json", type=str,
+                        help="the JSON file to load. Can be a URL or a local file", default="labels.json")
+    parser.add_argument("-l", "--labels", action="store_true",
+                        help="displays all labels")
+    parser.add_argument(
+        "-m", "--maxresults", help="maximum number of emails to process in one go. Maximum is 500", type=int, default=500)
+    parser.add_argument("-p", "--production", action="store_true",
+                        help="production mode (actually changes data)")
+    parser.add_argument("-s", "--scope", action='append',
+                        help="the gmail API scopes to use. Use multiple times to specify multiple scopes")
+    parser.add_argument(
+        "--schema", type=str, help="The schema file to validate against", default="labels.json.schema")
+
+    # Logging options
+    parser.add_argument("--log-level", type=str.upper, help="logging level. Messages lower than this aren't logged",
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='INFO')
+    parser.add_argument("--log-file", type=str,
+                        help="log file", default='results.log')
+    parser.add_argument("--log-interval", type=int,
+                        help="how many days to log before rotating the file", default=30)
+    parser.add_argument("--log-backup-count", type=int,
+                        help="how many log files to keep before overwriting the oldest", default=6)
 
     args = parser.parse_args()
-    config = vars(args) 
+    config = vars(args)
 
     # If you set a default value for the "append" action in argparse, the default value is always there.
     # We don't want that because if you're calling `--scope`, you want to override the default.
@@ -112,16 +128,18 @@ def getArgs():
         print("Max results flag needs to be between 1 and 500 due to Gmail API limitations")
         exit()
 
+
 def setupLogging():
     """Sets up logging using a rotating log.
     Also logs to the screen if running interactively.
     """
 
     logger = logging.getLogger("Rotating Log")
-    
+
     logger.setLevel(config['log_level'].upper())
 
-    fileHandler = TimedRotatingFileHandler(config['log_file'], when="d", interval=config['log_interval'], backupCount=config['log_backup_count'])
+    fileHandler = TimedRotatingFileHandler(
+        config['log_file'], when="d", interval=config['log_interval'], backupCount=config['log_backup_count'])
 
     # Create a handler to log to stdout
     streamHandler = logging.StreamHandler(sys.stdout)
@@ -169,11 +187,12 @@ def authorizeAPI(scopes):
 
     return creds, service
 
+
 def generateLabelsJSON(filename="labels.gmail.json"):
     """Downloads the user's labels from Gmail and makes a JSON file they can edit.
     Defaults to archiving messages older than 99 years, so no harm is done if the values aren't changed
     """
-    
+
     # Retrieve the labels from Gmail
     labels = getLabels()
 
@@ -206,6 +225,7 @@ def generateLabelsJSON(filename="labels.gmail.json"):
 
     return
 
+
 def getLabels():
     """Downloads the user's labels from Gmail.
     This only returns user labels, not system labels. 
@@ -219,34 +239,40 @@ def getLabels():
 
     return labels
 
+
 def cleanupInbox(json):
     """Takes a JSON file that contains an array of objects with three properties: `labels`, `older_than` and `actions`. It then searches
     Gmail for the specified labels, then performs the necessary action on them. 
     """
-    
+
+    global total
+
     for label in json:
         messages = findEmails(label)
         if not messages:
             continue
+
         handleEmails(messages, label)
+    logger.info('Modified {num} emails'.format(num=total))
 
 
 def findEmails(labels):
     """Searches for emails that match the given label and age. 
     When the email is found, pass it to 
     """
-
-
     # If we have a set of labels, do some formatting first.
     if 'labels' in labels:
 
         if type(labels['labels']) is list:
-            formattedLabels = " OR ".join(f'label:"{l}"' for l in labels['labels'])
+            formattedLabels = " OR ".join(
+                f'label:"{l}"' for l in labels['labels'])
         else:
             formattedLabels = 'label:"{l}"'.format(l=labels['labels'])
 
-        query = "in:inbox {labels} older_than:{older_than}".format(labels=formattedLabels, older_than=labels['older_than'])
-        logger.info("Retrieving emails with these labels: {labels}".format(labels=labels['labels']))
+        query = "in:inbox {labels} older_than:{older_than}".format(
+            labels=formattedLabels, older_than=labels['older_than'])
+        logger.debug("Retrieving emails with these labels: {labels}".format(
+            labels=labels['labels']))
 
     elif 'query' in labels:
 
@@ -256,18 +282,22 @@ def findEmails(labels):
         else:
             query = labels['query']
 
-        logger.info("Retrieving emails with this query: {query}".format(query=labels['query']))
+        logger.debug("Retrieving emails with this query: {query}".format(
+            query=labels['query']))
     else:
-        logger.error("Information passed has neither a label nor a query. Exiting!")
+        logger.error(
+            "Information passed has neither a label nor a query. Exiting!")
         exit(1)
     try:
-        
+
         # Call the Gmail API to get all messages that are in the inbox and have the specified label, and are older than the specified date
-        messages = service.users().messages().list(userId='me', q=query, maxResults=config['maxresults']).execute().get('messages', [])
+        messages = service.users().messages().list(userId='me', q=query,
+                                                   maxResults=config['maxresults']).execute().get('messages', [])
 
         # If there are no messages, warn, and return
         if not messages:
-            logger.debug('No messages found for query: {query}'.format(query=query))
+            logger.debug(
+                'No messages found for query: {query}'.format(query=query))
             return
 
         # Go through and pluck all the IDs from the messages, then return those
@@ -286,6 +316,7 @@ def handleEmails(messages, label):
 
     global service
     global config
+    global total  # How many emails have we processed so far?
 
     # The labels we're going to add and remove from the specified messages
     addLabels = []
@@ -306,32 +337,37 @@ def handleEmails(messages, label):
     if addLabels or removeLabels:
         body = {'ids': messages, 'removeLabelIds': removeLabels,
                 'addLabelIds': addLabels}
-        
+
         # Only take action if we're in production
         if config['production']:
             result = service.users().messages().batchModify(userId='me', body=body).execute()
         else:
-            logger.warning("Skipping modification step due to production flag not being set")
+            logger.warning(
+                "Skipping modification step due to production flag not being set")
             for message in messages:
                 # Retrieve details about the messages from Gmail and show a snippet.
                 # This helps you work out if you've typed the labels correctly.
                 details = getEmailDetails(message)
-                logger.info("Preview of {id}: {snippet}".format(id=message, snippet=details['snippet']))
-        
-        logger.info("Modified {num} emails with IDs of {ids} by adding these labels: {added} and removing these labels: {removed}".format(
-            num=len(messages), ids=messages, added=addLabels, removed=removeLabels))
+                logger.info("Preview of {id}: {snippet}".format(
+                    id=message, snippet=details['snippet']))
+
+        total += len(messages)
+        logger.info("Modified {num} emails with IDs of {ids} that matched {label} by adding these labels: {added} and removing these labels: {removed}".format(
+            num=len(messages), ids=messages, label=label, added=addLabels, removed=removeLabels))
 
     return
+
 
 def getEmailDetails(mail):
     """Loads information about a specific email from Gmail
     """
-    
-    return service.users().messages().get(userId='me', id=mail).execute()    
+
+    return service.users().messages().get(userId='me', id=mail).execute()
+
 
 def loadJSON(filename, schema):
     """Loads a JSON file if it exists"""
-    
+
     # If it's a URL, load it as a URL
     if validators.url(schema):
         schemaFile = request('GET', schema).json()
@@ -351,7 +387,7 @@ def loadJSON(filename, schema):
         logger.info("Loading schema from URL")
     else:
         logger.error("Unable to find {filename}!".format(filename=filename))
-        exit(1)        
+        exit(1)
 
     try:
         validate(jsonFile, schemaFile)
@@ -359,8 +395,8 @@ def loadJSON(filename, schema):
         logger.error(f"Schema validation failed! {error.message}")
         exit(1)
 
-    return jsonFile 
-    
+    return jsonFile
+
 
 if __name__ == '__main__':
     main()
