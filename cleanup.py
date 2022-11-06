@@ -353,7 +353,7 @@ def handleEmails(messages, label):
 
         total += len(messages)
         logger.info("Modified {num} emails with IDs of {ids} that matched {label} by adding these labels: {added} and removing these labels: {removed}".format(
-            num=len(messages), ids=messages, label=label, added=addLabels, removed=removeLabels))
+            num=len(messages), ids=messages, label=label['labels'], added=addLabels, removed=removeLabels))
 
     return
 
