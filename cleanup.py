@@ -38,6 +38,8 @@ config = None
 # How many emails we've processed this time
 total = 0
 
+# If true, will verify SSL.
+verifySSL = True
 
 def main():
     """Looks through a JSON file that contains label names and durations.
@@ -370,7 +372,7 @@ def loadJSON(filename, schema):
 
     # If it's a URL, load it as a URL
     if validators.url(schema):
-        schemaFile = request('GET', schema).json()
+        schemaFile = request('GET', schema, verify=verifySSL).json()
         logger.info("Loading schema from URL")
     elif os.path.exists(schema):
         schemaFile = json.load(open(schema))
@@ -380,7 +382,7 @@ def loadJSON(filename, schema):
         exit(1)
 
     if validators.url(filename):
-        jsonFile = request('GET', filename).json()
+        jsonFile = request('GET', filename, verify=verifySSL).json()
         logger.info("Loading json from URL")
     elif os.path.exists(filename):
         jsonFile = json.load(open(filename))
